@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PySpark Distributed Log Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="logo">⚡ PySpark Distributed Log Analyzer</div>
+      <div class="badge">Live Microservice Active</div>
+    </div>
+  </header>
+
+  <main class="main-layout">
+    <section class="panel-left">
+      <h2>Cluster Ingestion & Partitioning</h2>
+      <p class="subtitle">Distributed log batch parsing, RDD partitioning, HTTP status classification, and throughput telemetry.</p>
+
+      <div class="input-group">
+        <label for="batchInput">Ingestion Batch Size (Log Records)</label>
+        <select id="batchInput" class="text-input">
+          <option value="500">500 Records / Frame</option>
+          <option value="2500" selected>2,500 Records / Frame</option>
+          <option value="10000">10,000 Records / Frame</option>
+        </select>
+      </div>
+
+      <div class="metric-row">
+        <div style="flex: 1;">
+          <label style="font-size:0.85rem; color:#94a3b8;">Spark Partition Count</label>
+          <input type="number" id="partitionCount" class="text-input" value="8" min="1" max="64">
+        </div>
+        <div style="flex: 1;">
+          <label style="font-size:0.85rem; color:#94a3b8;">Log Format Engine</label>
+          <select id="formatSelect" class="text-input">
+            <option value="W3C_NGINX" selected>NGINX Combined Access</option>
+            <option value="APACHE_COMMON">Apache Common Log</option>
+            <option value="JSON_STREAM">Structured JSON Logs</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn primary-btn" onclick="executeProcess()">Execute Distributed Log Pipeline</button>
+
+      <div class="log-card">
+        <h4>Spark Driver Telemetry</h4>
+        <div id="logBox" class="terminal-log">Spark session initialized. Standing by for distributed execution...</div>
+      </div>
+    </section>
+
+    <aside class="panel-right">
+      <h2>Cluster Execution Diagnostics</h2>
+
+      <div class="metric-row">
+        <div class="metric-card">
+          <span class="label">Ingestion Throughput</span>
+          <span class="value" id="throughputVal">-- rps</span>
+        </div>
+        <div class="metric-card">
+          <span class="label">Error Rate (4xx/5xx)</span>
+          <span class="value" id="errorRateVal" style="color:#34d399;">--%</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>HTTP Status Distribution</h3>
+        <p style="font-size:0.85rem; color:#94a3b8; line-height:1.6;">
+          Status 200 OK: <code id="status200" style="color:#34d399;">--</code><br>
+          Status 404 Not Found: <code id="status404" style="color:#f59e0b;">--</code><br>
+          Status 500 Internal Error: <code id="status500" style="color:#f87171;">--</code><br>
+          Execution Latency (p99): <code id="execLatency">-- ms</code>
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Active Worker Partition Allocations</h3>
+        <ul id="resList">
+          <li>Awaiting cluster job execution...</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    async function executeProcess() {
+      const batchSize = parseInt(document.getElementById('batchInput').value, 10);
+      const partitions = parseInt(document.getElementById('partitionCount').value, 10);
+      const format = document.getElementById('formatSelect').value;
+      const log = document.getElementById('logBox');
+
+      log.innerText = `[${new Date().toLocaleTimeString()}] Submitting PySpark batch (${batchSize.toLocaleString()} records across ${partitions} partitions)\n[${new Date().toLocaleTimeString()}] Querying endpoint: /api/v1/logs/analyze...`;
+
+      const payload = {
+        batch_size: batchSize,
+        partition_count: partitions,
+        log_format: format
+      };
+
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/v1/logs/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+
+        const data = await res.json();
+        document.getElementById('throughputVal').innerText = `${data.throughput_rps.toLocaleString()} rps`;
+        document.getElementById('errorRateVal').innerText = `${data.error_rate_pct}%`;
+        document.getElementById('errorRateVal').style.color = data.error_rate_pct > 5.0 ? "#f87171" : "#34d399";
+
+        document.getElementById('status200').innerText = `${data.status_200_count.toLocaleString()} (${data.status_200_pct}%)`;
+        document.getElementById('status404').innerText = `${data.status_404_count.toLocaleString()} (${data.status_404_pct}%)`;
+        document.getElementById('status500').innerText = `${data.status_500_count.toLocaleString()} (${data.status_500_pct}%)`;
+        document.getElementById('execLatency').innerText = `${data.latency_ms} ms`;
+
+        document.getElementById('resList').innerHTML = data.worker_nodes
+          .map(w => `<li><code>[${w.node_id}]</code> Processed ${w.records_processed.toLocaleString()} records in ${w.execution_time_ms} ms</li>`).join('');
+
+        log.innerText += `\n[${new Date().toLocaleTimeString()}] 200 OK: PySpark DAG execution completed successfully.`;
+      } catch (err) {
+        log.innerText += `\n[${new Date().toLocaleTimeString()}] Note: Backend server offline (${err.message}).`;
+      }
+    }
+  </script>
+</body>
+</html>

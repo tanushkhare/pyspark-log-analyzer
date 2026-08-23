@@ -1,9 +1,9 @@
 from fastapi import APIRouter
-from app.schemas.logs import LogAnalysisResponse
-from app.services.spark_service import analyze_server_logs
+from backend.app.schemas.logs import LogAnalysisRequest, LogAnalysisResponse
+from backend.app.services.spark_service import spark_service
 
-router = APIRouter(prefix="/api", tags=["PySpark Log Analyzer"])
+router = APIRouter(prefix="/api/v1/logs", tags=["PySpark Log Analyzer Engine"])
 
-@router.get("/analyze", response_model=LogAnalysisResponse)
-def get_log_analytics():
-    return analyze_server_logs()
+@router.post("/analyze", response_model=LogAnalysisResponse)
+async def analyze_log_batch(payload: LogAnalysisRequest):
+    return spark_service.process_logs(payload)
