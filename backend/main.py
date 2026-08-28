@@ -1,11 +1,11 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.routers import logs
+from backend.app.routers import spark_router
 import uvicorn
 
 app = FastAPI(
     title="PySpark Distributed Log Analyzer API",
-    description="High-throughput log stream batching, status code classification, and RDD partition metrics.",
+    description="High-throughput batch log aggregation, RDD partitioning telemetry, and error rate monitoring.",
     version="1.0.0"
 )
 
@@ -17,10 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(logs.router)
+app.include_router(spark_router.router)
 
 @app.get("/health")
-async def health():
+async def health_check():
     return {"status": "healthy", "service": "pyspark-log-analyzer"}
 
 if __name__ == "__main__":

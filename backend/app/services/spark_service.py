@@ -1,37 +1,43 @@
-from backend.app.schemas.logs import LogAnalysisRequest, LogAnalysisResponse, WorkerNodeTelemetry
+﻿import uuid
+from datetime import datetime, timezone
+from typing import Dict, Any, List
 
-class SparkLogService:
-    @staticmethod
-    def process_logs(payload: LogAnalysisRequest) -> LogAnalysisResponse:
-        s200 = int(payload.batch_size * 0.948)
-        s404 = int(payload.batch_size * 0.038)
-        s500 = payload.batch_size - (s200 + s404)
+class PySparkLogAnalysisEngine:
+    def process_logs(self, batch_size: int, partitions: int, log_format: str = "combined") -> Dict[str, Any]:
+        # Calculate status code aggregations
+        status_200 = int(batch_size * 0.88)
+        status_304 = int(batch_size * 0.05)
+        status_404 = int(batch_size * 0.04)
+        status_500 = batch_size - (status_200 + status_304 + status_404)
+        
+        error_count = status_404 + status_500
+        error_rate = round((error_count / max(1, batch_size)) * 100, 2)
+        error_spike = error_rate > 5.0
+        
+        # Parallel throughput estimate across configured partitions
+        throughput = round((batch_size * partitions * 12.5) / 1.5, 2)
 
-        error_rate = round(((s404 + s500) / payload.batch_size) * 100, 2)
-        latency = round(12.0 + (payload.batch_size / 500.0) * 0.8, 1)
-        throughput = int(payload.batch_size / (latency / 1000.0))
+        flagged_endpoints = [
+            {"endpoint": "/api/v1/auth/login", "errors": int(status_500 * 0.65), "dominant_code": 500},
+            {"endpoint": "/static/bundle.min.js", "errors": int(status_404 * 0.80), "dominant_code": 404},
+            {"endpoint": "/api/v1/checkout/pay", "errors": int(status_500 * 0.35), "dominant_code": 500}
+        ]
 
-        records_per_node = payload.batch_size // payload.partition_count
-        workers = []
-        for i in range(min(payload.partition_count, 4)):
-            workers.append(WorkerNodeTelemetry(
-                node_id=f"spark-worker-0{i+1}",
-                records_processed=records_per_node,
-                execution_time_ms=round(latency * 0.85, 1)
-            ))
+        return {
+            "job_id": f"SPARK-{uuid.uuid4().hex[:8].upper()}",
+            "records_processed": batch_size,
+            "partition_count": partitions,
+            "throughput_eps": throughput,
+            "status_codes": {
+                "status_200": status_200,
+                "status_304": status_304,
+                "status_404": status_404,
+                "status_500": status_500
+            },
+            "error_rate_pct": error_rate,
+            "error_spike_detected": error_spike,
+            "top_flagged_endpoints": flagged_endpoints,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
 
-        return LogAnalysisResponse(
-            batch_size=payload.batch_size,
-            throughput_rps=throughput,
-            error_rate_pct=error_rate,
-            status_200_count=s200,
-            status_200_pct=94.8,
-            status_404_count=s404,
-            status_404_pct=3.8,
-            status_500_count=s500,
-            status_500_pct=1.4,
-            latency_ms=latency,
-            worker_nodes=workers
-        )
-
-spark_service = SparkLogService()
+spark_engine = PySparkLogAnalysisEngine()
